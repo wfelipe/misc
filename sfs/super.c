@@ -20,11 +20,27 @@ MODULE_LICENSE ("GPL");
 MODULE_AUTHOR ("Wilson Felipe");
 
 #define SFS_SUPER_MAGIC 0x19980122
+static struct inode *sfs_make_inode (struct super_block *sb, int mode);
 
 static struct super_operations sfs_s_ops = {
 	.statfs		= simple_statfs,
 	.drop_inode	= generic_delete_inode,
+//	.alloc_inode	= sfs_make_inode,
 };
+
+static struct inode *sfs_make_inode (struct super_block *sb, int mode)
+{
+	struct inode *ret = new_inode (sb);
+
+	if (ret)
+	{
+		ret->i_mode = mode;
+		ret->i_uid = ret->i_gid = 0;
+		ret->i_blocks = 0;
+		ret->i_atime = ret->i_mtime = ret->i_ctime = CURRENT_TIME;
+	}
+	return ret;
+}
 
 static int sfs_fill_super (struct super_block *sb, void *data, int silent)
 {
@@ -47,14 +63,12 @@ static int sfs_fill_super (struct super_block *sb, void *data, int silent)
 	/* create the root directory */
 	root_dentry = d_alloc_root (root);
 	if (! root_dentry)
-		goto out_iput;
+		goto out;
 	sb->s_root = root_dentry;
 
-	sfs_create_files (sb, root_dentry);
+	//sfs_create_files (sb, root_dentry);
 	return 0;
 
-out_iput:
-	return iput (root);
 out:
 	return -ENOMEM;
 }
@@ -70,7 +84,8 @@ static struct file_system_type sfs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "sfs",
 	.get_sb		= sfs_get_sb,
-	.kill_sb	= kill_block_super,
+	.kill_sb	= kill_litter_super,
+//	.kill_sb	= kill_block_super,
 //	.fs_flags	= FS_REQUIRES_DEV,
 };
 
