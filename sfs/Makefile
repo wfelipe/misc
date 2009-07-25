@@ -10,3 +10,8 @@ default:
 
 clean:
 	$(MAKE) -C $(KDIR) M=$(PWD) clean
+test:
+	umount /mnt 2> /dev/null
+	rmmod sfs 2> /dev/null
+	insmod sfs.ko
+	mount -t sfs none /mnt
