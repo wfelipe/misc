@@ -1,0 +1,1305 @@
+#!/usr/bin/perl
+#
+#
+# wfelipe <wfelipe@gmail.com>
+
+use strict;
+use warnings;
+use Carp;
+use YAML qw( Dump LoadFile );
+use Curses::UI;
+use File::Copy;
+
+my $cui;
+my %screens;
+my %gconfig = ();
+my %config = ();
+my $configfile = '/etc/meldwarecs/config.yaml';
+
+my %db_type = (
+	'demo-database (hypersonic)' => 0,
+	'postgresql' => 1,
+	'oracle' => 2,
+	'mysql' => 3,
+);
+my %store_type = (
+	'file' => 0,
+	'database' => 1,
+);
+
+&main ();
+
+sub main () {
+	my (@menu, $menu);
+
+	%gconfig = &load_config ();
+	%config = %{$gconfig{config}};
+	#&copy_config ();
+
+	$cui = new Curses::UI ( -color_support => 1, -clear_on_exit => 1 );
+	@menu = (
+		{	-label => 'File',
+			-submenu => [
+				{ -label => 'Save    ^S', -value => \&save_config },
+				{ -label => 'Exit    ^Q', -value => \&exit_dialog },
+			]
+		},
+		{	-label => 'Configuration',
+			-submenu => [
+				{ -label => 'SMTP Service', -value => sub { select_menu ('SMTP Service') } },
+				{ -label => 'Relay Domains', -value => sub { select_menu ('Relay Domains') } },
+				{ -label => 'SMTP Route', -value => sub { select_menu ('SMTP Route') } },
+				{ -label => 'POP Service', -value => sub { select_menu ('POP Service') } },
+				{ -label => 'IMAP Service', -value => sub { select_menu ('IMAP Service') } },
+				{ -label => 'DNS Configuration', -value => sub { select_menu ('DNS Configuration') } },
+				{ -label => 'Server Name Configuration', -value => sub { select_menu ('Server Name Configuration') } },
+				{ -label => 'Database Configuration', -value => sub { select_menu ('Database Configuration') } },
+				{ -label => 'Storage Configuration', -value => sub { select_menu ('Storage Configuration') } },
+				{ -label => 'SSL Cert', -value => sub { select_menu ('SSL Cert') } },
+				{ -label => 'Account', -value => sub { select_menu ('Account') } },
+				{ -label => 'Calendar', -value => sub { select_menu ('Calendar') } },
+			]
+		},
+		{
+			-label => 'Help',
+			-submenu => [
+				{ -label => 'About   ^S', -value => sub { select_menu ('About') } },
+			],
+		},
+	);
+
+	$menu = $cui->add (
+		'menu', 'Menubar',
+		-menu => \@menu,
+		-fg => 'blue',
+	);
+
+	&key_bindings ();
+	&select_menu ('About');
+	$menu->focus ();
+
+	$cui->mainloop ();
+}
+
+sub load_config ()
+{
+	my @keys;
+	
+	@keys = %{YAML::LoadFile ($configfile)};
+
+	return @keys;
+}
+
+sub save_config ()
+{
+	my $ant_scripts = 0;
+
+	$ant_scripts = 1
+		if (	$gconfig{config}{KEYSTORE_PATH} ne $config{KEYSTORE_PATH} ||
+			$gconfig{config}{KEYSTORE_CN} ne $config{KEYSTORE_CN} ||
+			$gconfig{config}{KEYSTORE_OU} ne $config{KEYSTORE_OU} ||
+			$gconfig{config}{KEYSTORE_O} ne $config{KEYSTORE_O} ||
+			$gconfig{config}{KEYSTORE_L} ne $config{KEYSTORE_L} ||
+			$gconfig{config}{KEYSTORE_ST} ne $config{KEYSTORE_ST} ||
+			$gconfig{config}{KEYSTORE_C} ne $config{KEYSTORE_C}
+		);
+
+	if ($config{DATABASE_TYPE} eq "hsqldb")
+	{
+		$config{DATASOURCE_NAME} = "DefaultDS";
+		$config{JAAS_DATASOURCE_NAME} = "DefaultDS";
+	}
+	else
+	{
+		$config{DATASOURCE_NAME} = "MeldwareDS";
+		$config{JAAS_DATASOURCE_NAME} = "MeldwareDS";
+	}
+
+	#$gconfig{config} = \%config;
+	#%config = %{$gconfig{config}};
+	&copy_config ();
+	copy ($configfile, $configfile . '.bak');
+	YAML::DumpFile ($configfile, \%gconfig);
+
+	&parse_templates ();
+
+	if ($ant_scripts)
+	{
+		rename ($config{INSTALL_PATH} . "/server/meldware/conf/" . $config{KEYSTORE_PATH},
+			$config{INSTALL_PATH} . "/server/meldware/conf/" . $config{KEYSTORE_PATH} . '.bak');
+		system ("ant -f " . $config{INSTALL_PATH} . "/scripts/ssl-gen.xml > /dev/null 2>&1");
+	}
+}
+
+sub copy_config
+{
+	foreach my $key (keys %config)
+	{
+		$gconfig{config}{$key} = $config{$key};
+	}
+}
+
+sub select_menu ()
+{
+	my $name = shift;
+
+	$screens{$name} = &create_screen ($name)
+		if (!exists ($screens{$name}) && !defined ($screens{$name}));
+	
+	$screens{$name}->focus ();
+}
+
+sub create_screen ()
+{
+	my $name = shift;
+	my $screen = $cui->add (
+		$name, 'Window',
+		-padtop => 1, # space for the menu
+		-border => 1,
+		-ipad => 0,
+		-title => $name,
+	);
+
+	if ($name eq 'About') { return &create_about ($screen); }
+	elsif ($name eq 'SMTP Service') { return &create_smtp ($screen); }
+	elsif ($name eq 'Relay Domains') { return &create_relay ($screen); }
+	elsif ($name eq 'SMTP Route') { return &create_route ($screen); }
+	elsif ($name eq 'POP Service') { return &create_pop ($screen); }
+	elsif ($name eq 'IMAP Service') { return &create_imap ($screen); }
+	elsif ($name eq 'DNS Configuration') { return &create_dns ($screen); }
+	elsif ($name eq 'Server Name Configuration') { return &create_servername ($screen); }
+	elsif ($name eq 'Database Configuration') { return &create_db ($screen); }
+	elsif ($name eq 'Storage Configuration') { return &create_storage ($screen); }
+	elsif ($name eq 'SSL Cert') { return &create_ssl ($screen); }
+	elsif ($name eq 'Account') { return &create_account ($screen); }
+	elsif ($name eq 'Calendar') { return &create_calendar ($screen); }
+
+	return undef;
+}
+
+sub parse_templates ()
+{
+	my ($tpls, $tpl_dir, $dest_dir);
+	my $tpl_config = $gconfig{templates};
+	my $processtpl = $tpl_config->{processtpl};
+	my $java = $tpl_config->{java};
+
+	system ("$java -jar $processtpl $configfile");
+}
+
+sub exit_dialog ()
+{
+	my $return;
+	my $key;
+	my $config_changed = 0;
+
+	foreach $key (keys (%config))
+	{
+		if ($config{$key} ne $gconfig{config}{$key})
+		{
+			$config_changed = 1;
+			last;
+		}
+	}
+	$return = $cui->dialog (
+		-title => "Save the configuration?",
+		-buttons => ['yes', 'no'],
+		-message => "Save the configuration before exiting?",
+			-tbg => "white",
+		-tfg => "red",
+		-bg => "white",
+		-fg => "red",
+		-bbg => "white",
+		-bfg => "red",
+	)
+		if ($config_changed);
+
+	&save_config () if $return;
+	exit (0);
+}
+
+sub key_bindings ()
+{
+	$cui->set_binding(\&exit_dialog, "\cQ", "\cC");
+	$cui->set_binding(\&save_config, "\cS");
+#	$cui->set_binding(\&open_dialog, "\cO");
+}
+
+#
+# configuration windows
+#
+sub create_about ()
+{
+	my $screen = shift;
+	my $pos = 1;
+	my $about;
+
+#	$screen->add (
+#		undef, 'Label', -y => ++$pos,
+#		-width => 19, -text => 'About',
+#	);
+
+	$about = <<END;
+The Meldware Communications Suite (MCS) is a platform-independent groupware package consisting of:
+
+    * Meldware Mail
+    * Meldware Calendar
+    * Meldware Webmail
+    * Meldware Secure Administration System 
+
+Together the package provides support for thousands of users concurrently to send and receive email and to schedule meetings. MCS uniquely allows you to store all messages and scheduling events in nearly any database and runs on nearly all popular software and hardware platforms.
+
+MCS' commitment to platform and database agnosticism aims to meet increasing business requirements to maximize ease and flexibility of managing and accessing data as well as putting a premium on interoperability.
+END
+	$screen->add (
+		undef, 'TextViewer',
+		-readonly => 1,
+		-text => $about,
+		-wrapping => 1,
+	);
+}
+
+sub create_smtp ()
+{
+	my $screen = shift;
+	my $pos = 1;
+
+	# enable smtp (check)
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{SMTP_ENABLED},
+		-label => 'Enable SMTP',
+		-onChange => sub {
+			my $cb = shift;
+			$config{SMTP_ENABLED} = $cb->get ();
+		},
+	);
+
+	# port (text)
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'SMTP Port',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{SMTP_PORT}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{SMTP_PORT} = $te->get ();
+		}
+	);
+	#
+	# tls support (check)
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{SMTP_TLS_ENABLED},
+		-label => 'TLS support',
+		-onChange => sub {
+			my $cb = shift;
+			$config{SMTP_TLS_ENABLED} = $cb->get ();
+		},
+	);
+
+	# tls required (check)
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{SMTP_TLS_REQUIRED},
+		-label => 'TLS required',
+		-onChange => sub {
+			my $cb = shift;
+			$config{SMTP_TLS_REQUIRED} = $cb->get ();
+		},
+	);
+
+	# tls required for authentication (check)
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{SMTP_TLS_REQUIRED_AUTH},
+		-label => 'TLS required for autentication',
+		-onChange => sub {
+			my $cb = shift;
+			$config{SMTP_TLS_REQUIRED_AUTH} = $cb->get ();
+		},
+	);
+
+	#
+	# authentication allowed (check)
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{SMTP_AUTH_ALLOWED},
+		-label => 'Authentication Allowed',
+		-onChange => sub {
+			my $cb = shift;
+			$config{SMTP_AUTH_ALLOWED} = $cb->get ();
+		},
+	);
+
+	# verify identity (check)
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{SMTP_VERIFY_IDENTITY},
+		-label => 'Verify Identity',
+		-onChange => sub {
+			my $cb = shift;
+			$config{SMTP_VERIFY_IDENTITY} = $cb->get ();
+		},
+	);
+
+	# SMTP/SSL
+	$screen->add (
+		undef, 'Label', -y => $pos++, -x => 5,
+		-text => 'SMTP/SSL Configuration',
+	);
+
+	# enable smtp/ssl
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{SMTP_SSL_ENABLED},
+		-label => 'Enable SMTP/SSL',
+		-onChange => sub {
+			my $cb = shift;
+			$config{SMTP_SSL_ENABLED} = $cb->get ();
+		},
+	);
+
+	# smtp/ssl port
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'SMTP/SSL Port',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{SMTP_SSL_PORT}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{SMTP_SSL_PORT} = $te->get ();
+		}
+	);
+
+	# verify identity (check) - smtp/ssl
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{SMTP_SSL_VERIFY_IDENTITY},
+		-label => 'Verify Identity',
+		-onChange => sub {
+			my $cb = shift;
+			$config{SMTP_SSL_VERIFY_IDENTITY} = $cb->get ();
+		},
+	);
+
+	# enable SPAM JASEN_ENABLED
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{JASEN_ENABLED},
+		-label => 'Enable SPAM Filtering',
+		-onChange => sub {
+			my $cb = shift;
+			$config{JASEN_ENABLED} = $cb->get ();
+		},
+	);
+}
+
+sub create_relay
+{
+	my $screen = shift;
+	my $pos = 1;
+
+	# allow relaying by domain
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{RELAY_BY_DOMAIN_ENABLED},
+		-label => 'Allow relaying by domain',
+		-onChange => sub {
+			my $cb = shift;
+			$config{RELAY_BY_DOMAIN_ENABLED} = $cb->get ();
+		},
+	);
+
+	# relay domain 1
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Relay Domain #1',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{RELAY_DOMAIN_1}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{RELAY_DOMAIN_1} = $te->get ();
+		}
+	);
+
+	# relay domain 2
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Relay Domain #2',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{RELAY_DOMAIN_2}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{RELAY_DOMAIN_2} = $te->get ();
+		}
+	);
+
+	# relay domain 3
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Relay Domain #3',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{RELAY_DOMAIN_3}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{RELAY_DOMAIN_3} = $te->get ();
+		}
+	);
+
+	# relay domain 4
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Relay Domain #4',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{RELAY_DOMAIN_4}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{RELAY_DOMAIN_4} = $te->get ();
+		}
+	);
+}
+
+sub create_route
+{
+	my $screen = shift;
+	my $pos = 1;
+
+	# enable smtp routing
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{ROUTING_ENABLED},
+		-label => 'Enable SMTP Routing',
+		-onChange => sub {
+			my $cb = shift;
+			$config{ROUTING_ENABLED} = $cb->get ();
+		},
+	);
+
+	# gateway host
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Gateway Host',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{ROUTE_HOST}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{ROUTE_HOST} = $te->get ();
+		}
+	);
+
+	# routing by domain
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{ROUTING_BY_DOMAIN},
+		-label => 'Route only the below domains',
+		-onChange => sub {
+			my $cb = shift;
+			$config{ROUTING_BY_DOMAIN} = $cb->get ();
+		},
+	);
+
+	# route domain 1
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Route Domain #1',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{ROUTE_DOMAIN_1}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{ROUTE_DOMAIN_1} = $te->get ();
+		}
+	);
+
+	# route domain 2
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Route Domain #2',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{ROUTE_DOMAIN_2}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{ROUTE_DOMAIN_2} = $te->get ();
+		}
+	);
+
+	# route domain 3
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Route Domain #3',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{ROUTE_DOMAIN_3}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{ROUTE_DOMAIN_3} = $te->get ();
+		}
+	);
+
+	# route domain 4
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Route Domain #4',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{ROUTE_DOMAIN_4}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{ROUTE_DOMAIN_4} = $te->get ();
+		}
+	);
+}
+
+sub create_pop
+{
+	my $screen = shift;
+	my $pos = 1;
+
+	# enable pop
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{POP_ENABLED},
+		-label => 'Enable POP',
+		-onChange => sub {
+			my $cb = shift;
+			$config{POP_ENABLED} = $cb->get ();
+		},
+	);
+
+	# pop port
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Port',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{POP_PORT}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{POP_PORT} = $te->get ();
+		}
+	);
+
+	# tls support
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{POP_TLS_ENABLED},
+		-label => 'TLS Support',
+		-onChange => sub {
+			my $cb = shift;
+			$config{POP_TLS_ENABLED} = $cb->get ();
+		},
+	);
+
+	# tls require
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{POP_TLS_REQUIRED},
+		-label => 'TLS Require',
+		-onChange => sub {
+			my $cb = shift;
+			$config{POP_TLS_REQUIRED} = $cb->get ();
+		},
+	);
+
+	# pop/ssl enable
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{POP_SSL_ENABLED},
+		-label => 'Enable POP/SSL',
+		-onChange => sub {
+			my $cb = shift;
+			$config{POP_SSL_ENABLED} = $cb->get ();
+		},
+	);
+
+	# pop/ssl port
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Port',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{POP_SSL_PORT}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{POP_SSL_PORT} = $te->get ();
+		}
+	);
+}
+
+sub create_imap ()
+{
+	my $screen = shift;
+	my $pos = 1;
+
+	# imap enable
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{IMAP_ENABLED},
+		-label => 'Enable IMAP',
+		-onChange => sub {
+			my $cb = shift;
+			$config{IMAP_ENABLED} = $cb->get ();
+		},
+	);
+
+	# imap port
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Port',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{IMAP_PORT}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{IMAP_PORT} = $te->get ();
+		}
+	);
+
+	# imap over ssl
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{IMAP_SSL_ENABLED},
+		-label => 'Enable IMAP over SSL',
+		-onChange => sub {
+			my $cb = shift;
+			$config{IMAP_SSL_ENABLED} = $cb->get ();
+		},
+	);
+
+	# imap ssl port
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Port',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{IMAP_SSL_PORT}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{IMAP_SSL_PORT} = $te->get ();
+		}
+	);
+}
+
+sub create_dns
+{
+	my $screen = shift;
+	my $pos = 1;
+
+	# dns servers
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'DNS Server #1',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{'DNS_SERVER_1'}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{'DNS_SERVER_1'} = $te->get ();
+		}
+	);
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'DNS Server #2',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{'DNS_SERVER_2'}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{'DNS_SERVER_2'} = $te->get ();
+		}
+	);
+
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'DNS Server #3',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{'DNS_SERVER_3'}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{'DNS_SERVER_3'} = $te->get ();
+		}
+	);
+
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'DNS Server #4',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{'DNS_SERVER_4'}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{'DNS_SERVER_4'} = $te->get ();
+		}
+	);
+}
+
+sub create_servername ()
+{
+	my $screen = shift;
+	my $pos = 1;
+	my $width = 30;
+
+	# local domain #1
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Local Domain #1',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{DOMAIN_1}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{DOMAIN_1} = $te->get ();
+		}
+	);
+
+	# local domain #2 DOMAIN_2
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Local Domain #2',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{DOMAIN_2}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{DOMAIN_2} = $te->get ();
+		}
+	);
+
+	# local domain #3 DOMAIN_3
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Local Domain #3',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{DOMAIN_3}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{DOMAIN_3} = $te->get ();
+		}
+	);
+
+	# local domain #4 DOMAIN_4
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Local Domain #4',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{DOMAIN_4}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{DOMAIN_4} = $te->get ();
+		}
+	);
+
+	# local domain #5 DOMAIN_5
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Local Domain #5',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{DOMAIN_5}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{DOMAIN_5} = $te->get ();
+		}
+	);
+
+	# local domain #6 DOMAIN_6
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Local Domain #6',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{DOMAIN_6}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{DOMAIN_6} = $te->get ();
+		}
+	);
+
+	# server name SERVER_NAME
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'ServerName',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{SERVER_NAME}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{SERVER_NAME} = $te->get ();
+		}
+	);
+
+	# server bind address SERVER_BIND_ADDRESS
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Server Bind Address',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{SERVER_BIND_ADDRESS}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{SERVER_BIND_ADDRESS} = $te->get ();
+		}
+	);
+
+	# full email address of postmaster POSTMASTER_ADDRESS
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Postmaster Address',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{POSTMASTER_ADDRESS}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{POSTMASTER_ADDRESS} = $te->get ();
+		}
+	);
+}
+
+sub create_db ()
+{
+	my $screen = shift;
+	my $pos = 1;
+	my $width = 30;
+
+	# database type (demo database (hypersonic), postgresql, oracle, mysql) DATABASE_TYPE
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Database Type',
+	);
+	$screen->add (
+		undef, 'Popupmenu',
+		-values => [ 'demo-database (hypersonic)', 'postgresql', 'oracle', 'mysql' ],
+		-x => $width, -y => $pos++,
+		-selected => $db_type{$config{DATABASE_TYPE}}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{DATABASE_TYPE} = $te->get ();
+		}
+	);
+	# database user DB_USER
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Database User',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{DB_USER}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{DB_USER} = $te->get ();
+		}
+	);
+
+	# database password DB_PASS
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Database Password',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{DB_PASS}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{DB_PASS} = $te->get ();
+		}
+	);
+
+	# database host DB_HOST
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Database Host',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{DB_HOST}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{DB_HOST} = $te->get ();
+		}
+	);
+
+	# database name or SID DB_NAME
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Database Name or SID',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{DB_NAME}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{DB_NAME} = $te->get ();
+		}
+	);
+}
+
+sub create_storage ()
+{
+	my $screen = shift;
+	my $pos = 1;
+
+	# storage type (database, file) STORE_TYPE
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Storage Type',
+	);
+	$screen->add (
+		undef, 'Popupmenu',
+		-values => [ 'file', 'database' ],
+		-x => 20, -y => $pos++,
+		-selected => $store_type{$config{'STORE_TYPE'}}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{'STORE_TYPE'} = $te->get ();
+		}
+	);
+
+	# base directory for the file store (blank for default) FILESTORE_PATH
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Directory',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{'FILESTORE_PATH'}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{'FILESTORE_PATH'} = $te->get ();
+		}
+	);
+}
+
+sub create_ssl ()
+{
+	my $screen = shift;
+	my $pos = 1;
+	my $width = 30;
+
+	# name of keystore KEYSTORE_PATH
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Name of keystore',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 30,
+		-text => $config{KEYSTORE_PATH}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{KEYSTORE_PATH} = $te->get ();
+		}
+	);
+
+	# keystore password KEYSTORE_PASS
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Keystore Password',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 30,
+		-text => $config{KEYSTORE_PASS}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{KEYSTORE_PASS} = $te->get ();
+		}
+	);
+
+	# generate keystore (check) GENERATE_STORE
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{GENERATE_STORE},
+		-label => 'Generate Keystore?',
+		-onChange => sub {
+			my $cb = shift;
+			$config{GENERATE_STORE} = $cb->get ();
+		},
+	);
+
+	# hostname KEYSTORE_CN
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Hostname',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 30,
+		-text => $config{KEYSTORE_CN}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{KEYSTORE_CN} = $te->get ();
+		}
+	);
+
+	# company/organization unit KEYSTORE_O
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Company/Organization Unit',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 30,
+		-text => $config{KEYSTORE_OU}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{KEYSTORE_OU} = $te->get ();
+		}
+	);
+
+	# division/organization KEYSTORE_O
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Division/Organization',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 30,
+		-text => $config{KEYSTORE_O}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{KEYSTORE_O} = $te->get ();
+		}
+	);
+
+	# city/locality KEYSTORE_L
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'City/Locality',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 30,
+		-text => $config{KEYSTORE_L}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{KEYSTORE_L} = $te->get ();
+		}
+	);
+
+	# state/province KEYSTORE_ST
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'State/Province',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 30,
+		-text => $config{KEYSTORE_ST}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{KEYSTORE_ST} = $te->get ();
+		}
+	);
+
+	# country KEYSTORE_C
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Country',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 5,
+		-text => $config{KEYSTORE_C}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{KEYSTORE_C} = $te->get ();
+		}
+	);
+}
+
+sub create_account ()
+{
+	my $screen = shift;
+	my $pos = 1;
+
+	# admin username ADMIN_USER
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Admin Username',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{'ADMIN_USER'}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{'ADMIN_USER'} = $te->get ();
+		}
+	);
+
+	# admin password ADMIN_PASSWORD
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => 19, -text => 'Admin Password',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => 20, -y => $pos++, -width => 20,
+		-text => $config{'ADMIN_PASSWORD'}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{'ADMIN_PASSWORD'} = $te->get ();
+		}
+	);
+}
+
+sub create_calendar ()
+{
+	my $screen = shift;
+	my $pos = 1;
+	my $width = 30;
+
+	# create calendar notification account (check) GENERATE_CALENDAR_MAILER
+	$screen->add (
+		undef, 'Checkbox', -y => $pos++,
+		-checked => $config{GENERATE_CALENDAR_MAILER},
+		-label => 'Create Calendar Notification Account?',
+		-onChange => sub {
+			my $cb = shift;
+			$config{GENERATE_CALENDAR_MAILER} = $cb->get ();
+		},
+	);
+	# calendar mailer alias CALENDAR_MAILER_ALIAS
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Calendar Mailer Alias',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{CALENDAR_MAILER_ALIAS}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{CALENDAR_MAILER_ALIAS} = $te->get ();
+		}
+	);
+	# calendar mailer name CALENDAR_MAILER_NAME
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Calendar Mailer Name',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{CALENDAR_MAILER_NAME}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{CALENDAR_MAILER_NAME} = $te->get ();
+		}
+	);
+	# calendar mailer password CALENDAR_MAILER_PASSWORD
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Calendar Mailer Password',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{CALENDAR_MAILER_PASSWORD}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{CALENDAR_MAILER_PASSWORD} = $te->get ();
+		}
+	);
+	# calendar mailer smtp host CALENDAR_MAILER_SERVERHOST
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Calendar Mailer SMTP Host',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{CALENDAR_MAILER_SERVERHOST}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{CALENDAR_MAILER_SERVERHOST} = $te->get ();
+		}
+	);
+	# calendar mailer port CALENDAR_MAILER_SERVERPORT
+	$screen->add (
+		undef, 'Label', -y => $pos,
+		-width => $width, -text => 'Calendar Mailer Port',
+	);
+	$screen->add (
+		undef, 'TextEntry',
+		-x => $width, -y => $pos++, -width => 20,
+		-text => $config{CALENDAR_MAILER_SERVERPORT}, -sbborder => 1,
+		-onChange => sub {
+			my $te = shift;
+			$config{CALENDAR_MAILER_SERVERPORT} = $te->get ();
+		}
+	);
+}
