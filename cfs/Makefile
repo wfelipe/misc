@@ -1,12 +1,12 @@
-obj-m    := sfs.o
+obj-$(CONFIG_CFS)    := cfs.o
 
-zfs-y	:= super.o
+cfs-y	:= super.o
 
 KDIR	:= /lib/modules/$(shell uname -r)/build
 PWD	:= $(shell pwd)
 
 default:
-	$(MAKE) -C $(KDIR) M=$(PWD) modules
+	$(MAKE) -C $(KDIR) M=$(PWD) CONFIG_CFS=m modules
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(PWD) clean
+	$(MAKE) -C $(KDIR) M=$(PWD) CONFIG_CFS=m clean
