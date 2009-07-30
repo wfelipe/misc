@@ -21,8 +21,8 @@
 
 static struct inode *cfs_make_inode (struct super_block *sb, int mode, dev_t dev)
 {
-	struct cfs_inode *ei;
 	struct inode *inode;
+	struct cfs_inode *ei;
 	
 	inode = new_inode (sb);
 	if (!inode)
@@ -117,7 +117,8 @@ static struct inode *cfs_alloc_inode (struct super_block *sb)
 	struct inode *inode;
 
 	ei = (struct cfs_inode *) kmem_cache_alloc (cfs_inode_cachep, GFP_KERNEL);
-	if (!ei) { return NULL; }
+	if (!ei)
+		return NULL;
 	inode = &ei->vfs_inode;
 	inode->i_mtime = inode->i_atime = inode->i_ctime = CURRENT_TIME;
 
@@ -188,13 +189,19 @@ static struct file_system_type cfs_type = {
 	.next		= NULL,
 };
 
+static void init_once (void *data)
+{
+	struct cfs_inode *ei = (struct cfs_inode *) data;
+
+	inode_init_once (&ei->vfs_inode);
+}
+
 static int __init init_cfs (void)
 {
 	printk (KERN_INFO "init_cfs\n");
 
 	cfs_inode_cachep = kmem_cache_create ("cfs_inode_cachep",
-		sizeof (struct cfs_inode), 0,
-		SLAB_RECLAIM_ACCOUNT | SLAB_MEM_SPREAD, 0);
+		sizeof (struct cfs_inode), 0, 0, init_once);
 	return register_filesystem (&cfs_type);
 }
 
