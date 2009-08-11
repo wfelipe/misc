@@ -1,3 +1,10 @@
 Module.markers
 *.order
 !.gitignore
+*.o
+*.swp
+*.cmd
+Module.symvers
+*.mod.c
+.*
+*.ko

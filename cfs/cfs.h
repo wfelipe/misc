@@ -1,6 +1,10 @@
 #ifndef __CFS_H__
 #define __CFS_H__
 
+#include <linux/types.h>
+#include <linux/fs.h>
+//#include <linux/vfs.h>
+
 struct cfs_compress {
 	u32 compress;
 	u32 uncompress;
@@ -14,7 +18,10 @@ struct cfs_inode {
 };
 
 static const struct super_operations cfs_s_ops;
+/*
 static const struct address_space cfs_aops;
+*/
+static const struct address_space_operations cfs_aops;
 static const struct inode_operations cfs_file_inode_operations;
 static const struct inode_operations cfs_dir_inode_operations;
 static const struct file_operations cfs_file_operations;
