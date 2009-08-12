@@ -17,14 +17,22 @@ struct cfs_inode {
 	struct inode vfs_inode;
 };
 
+static struct inode *cfs_alloc_inode (struct super_block *sb);
+static void cfs_destroy_inode (struct inode *inode);
+int cfs_init_cachep (void);
+void cfs_destroy_cachep (void);
+/*
 static const struct super_operations cfs_s_ops;
+*/
 /*
 static const struct address_space cfs_aops;
 */
+/*
 static const struct address_space_operations cfs_aops;
 static const struct inode_operations cfs_file_inode_operations;
 static const struct inode_operations cfs_dir_inode_operations;
 static const struct file_operations cfs_file_operations;
+*/
 
 /*
 static struct inode *cfs_alloc_inode (struct super_block *sb);

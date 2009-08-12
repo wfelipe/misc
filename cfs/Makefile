@@ -1,6 +1,6 @@
 obj-$(CONFIG_CFS)    := cfs.o
 
-cfs-y	:= compression.o super.o
+cfs-y	:= compression.o super.o inode.o
 
 KDIR	:= /lib/modules/$(shell uname -r)/build
 PWD	:= $(shell pwd)
