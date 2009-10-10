@@ -66,11 +66,13 @@ void *dotprod(void *arg)
    Lock a mutex prior to updating the value in the shared
    structure, and unlock it upon updating.
    */
+   printf ("thread lock %d\n", offset);
    pthread_mutex_lock (&mutexsum);
    dotstr.sum += mysum;
+   printf ("thread unlock %d\n", offset);
    pthread_mutex_unlock (&mutexsum);
 
-   pthread_exit((void*) 0);
+   //pthread_exit((void*) 0);
 }
 
 /* 
@@ -126,7 +128,7 @@ int main (int argc, char *argv[])
 
         /* Wait on the other threads */
 	for(i=0; i<NUMTHRDS; i++)
-        {
+    {
 	  pthread_join(callThd[i], &status);
 	}
 
