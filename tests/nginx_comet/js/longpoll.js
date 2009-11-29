@@ -1,38 +1,19 @@
-function handleResponse ()
-{
-	if (this.readyState != 4) {
-		return;
-	}
-	//if (!this.responseText) { return; }
-
-	//document.getElementById ('message').innerHTML = this.responseText;
-	document.getElementById ('message').innerHTML = this.responseText + " " + this.getResponseHeader ('Last-Modified');
-	//longpoll (this);
-}
-
-function xh_onload ()
-{
-	if (this.responseText) {
-		document.getElementById ('message').innerHTML = this.responseText;
-	}
-}
-
-function longpoll (xhr)
+function longpoll (lm)
 {
 	var xhReq = new XMLHttpRequest ();
-/*
-	if (!xhr) {
-		xhr = new XMLHttpRequest ();
-//		xhr.setRequestHeader ("If-Modified-Since", "Sat, 28 Nov 2009 00:00:00 GMT");
-	} else {
-		xhr.setRequestHeader ("If-Modified-Since", xhr.getResponseHeader ('Last-Modified'));
-	}
-*/
 
-	if (xhr) {
-		xhr.setRequestHeader ("If-Modified-Since", xhr.getResponseHeader ('Last-Modified'));
+	xhReq.open ("GET", "/broadcast/sub?id=3", true);
+	if (lm) {
+		xhReq.setRequestHeader ('If-Modified-Since', lm);
+	} else {
+		//xhReq.setRequestHeader ('If-Modified-Since', );
+		xhReq.setRequestHeader ('Cache-Control', 'no-cache');
+		xhReq.setRequestHeader ('Pragma', 'no-cache');
 	}
-	xhReq.onreadystatechange = handleResponse;
-	xhReq.open ("GET", "/broadcast/sub", true);
+	xhReq.onreadystatechange = function () {
+		if (xhReq.readyState != 4) { return; }
+		document.getElementById ('message').innerHTML = xhReq.responseText;
+		longpoll (xhReq.getResponseHeader ('Last-Modified'));
+	}
 	xhReq.send (null);
 }
