@@ -1,0 +1,24 @@
+<html>
+<head>
+<title>HTTP post to a push server</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<script type="text/javascript" src="js/longpoll.js"></script>
+<style type="text/css">
+<!--
+p {  font-family: Arial, Helvetica, sans-serif; font-size: 12pt; font-style: normal; line-height: normal; font-weight: normal; color: #000000}
+-->
+</style>
+</head>
+
+<body bgcolor="#FFFFFF" id=body>
+<h2 align="center">Message post to a push server</h2>
+</body>
+<head>
+	<!-- form action="/broadcast/pub?id=3" method="post" onsubmit="handleSubmit (this);" -->
+	<form action="#" method="post" onsubmit="return handleSubmit (this);">
+		<input type="text" name="value" />
+		<input type="submit" name="publish" value="publish" />
+		<span id="message"></span>
+	</form>
+</head>
+</html>
