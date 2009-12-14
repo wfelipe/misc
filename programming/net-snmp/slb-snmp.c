@@ -1,4 +1,5 @@
 #include "slb-snmp.h"
+#include <sys/time.h>
 
 int main (int argc, char **argv)
 {
@@ -6,6 +7,14 @@ int main (int argc, char **argv)
 	int i, n_values;
 	char *value;
 	char *values[BUFFER_SIZE], *names[BUFFER_SIZE];
+
+	struct timeval tim;
+
+	if (DEBUG)
+	{
+		gettimeofday (&tim, NULL);
+		printf ("0: %ld %ld\n", tim.tv_sec, tim.tv_usec);
+	}
 
 	if (argc <= 1)
 		help (USAGE);
@@ -42,7 +51,17 @@ int main (int argc, char **argv)
 	if (DEBUG)
 		print_farm_config (&fc);
 
+	if (DEBUG)
+	{
+		gettimeofday (&tim, NULL);
+		printf ("1: %ld %ld\n", tim.tv_sec, tim.tv_usec);
+	}
 	snmp_get_oids (&fc, names, values, n_values);
+	if (DEBUG)
+	{
+		gettimeofday (&tim, NULL);
+		printf ("2: %ld %ld\n", tim.tv_sec, tim.tv_usec);
+	}
 
 	help (OK);
 
@@ -345,6 +364,7 @@ void snmp_get_oids (struct farm_config *fc, char **names, char **values, int n_v
 	{
 		switch (vars->type)
 		{
+			case ASN_INTEGER:
 			case ASN_GAUGE:
 				if (DEBUG) printf ("ASN_GAUGE\n");
 				printf ("%s:%lld ", names[i], vars->val.integer[0]);
@@ -357,6 +377,7 @@ void snmp_get_oids (struct farm_config *fc, char **names, char **values, int n_v
 				if (DEBUG) printf ("STRING\n");
 				printf ("%s:%s ", names[i], vars->val.string);
 				break;
+
 /*
 			case ASN_NULL:
 				fprintf (stderr, "OID not found, name %s, oid ", names[i]);
