@@ -1,0 +1,6 @@
+a code written in C to retrieve snmp informations from:
+- CSM (Content Switch Module): an old SLB from Cisco
+- Foundry
+- Juniper (never tested)
+
+why not perl? Well, perl used to take a whole second just to load the library, while in C, it took only a few milliseconds :o)
