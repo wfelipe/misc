@@ -17,10 +17,10 @@ int main (int argc, char **argv)
 	}
 
 	if (argc <= 1)
-		help (USAGE);
+		help (USAGE, NULL);
 
 	init_farm_config (&fc);
-	help (read_farm_config (&fc, argv[1]));
+	help (read_farm_config (&fc, argv[1]), argv[1]);
 
 	if (argc == 2)
 	{
@@ -36,7 +36,7 @@ int main (int argc, char **argv)
 		if (argv[i][strlen (argv[i]) - 1] == '+')
 		{
 			argv[i][strlen (argv[i]) - 1] = '\0';
-			help (append_value_farm_item (&fc, argv[i], argv[i + 1]));
+			help (append_value_farm_item (&fc, argv[i], argv[i + 1]), argv[i]);
 			names[n_values] = argv[i++];
 		}
 		else
@@ -44,7 +44,7 @@ int main (int argc, char **argv)
 
 		value = get_farm_item_value (&fc, names[n_values]);
 		if (value == NULL)
-			help (ER_FI_NAME);
+			help (ER_FI_NAME, names[n_values]);
 		values[n_values++] = value;
 	}
 
@@ -63,7 +63,7 @@ int main (int argc, char **argv)
 		printf ("2: %ld %ld\n", tim.tv_sec, tim.tv_usec);
 	}
 
-	help (OK);
+	help (OK, NULL);
 
 	return 0;
 }
@@ -76,7 +76,7 @@ int main (int argc, char **argv)
 		return or prints the error and usage
 
 */
-void help (int err)
+void help (int err, char *cerr)
 {
 	switch (err)
 	{
@@ -85,19 +85,19 @@ void help (int err)
 		case USAGE:
 			break;
 		case ER_FILE_CNR:
-			fprintf (stderr, "Configuration could not be found\n");
-			break;
+			fprintf (stderr, "ERROR: Configuration could not be found: %s/%s.conf\n", PREFIX, cerr);
+			exit (1);
 		case ER_SYNTAX:
-			fprintf (stderr, "Syntax error\n");
-			break;
+			fprintf (stderr, "ERROR: Syntax error\n");
+			exit (1);
 		case ER_NOT_FOUND:
-			fprintf (stderr, "farm_item not found\n");
-			break;
+			fprintf (stderr, "ERROR: farm_item not found: %s\n", cerr);
+			exit (1);
 		case ER_FI_NAME:
-			fprintf (stderr, "farm_item name not found\n");
-			break;
+			fprintf (stderr, "ERROR: farm_item name not found: %s\n", cerr);
+			exit (1);
 		default:
-			fprintf (stderr, "unknown error\n");
+			fprintf (stderr, "ERROR: unknown error\n");
 			break;
 	}
 
