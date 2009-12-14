@@ -347,24 +347,26 @@ void snmp_get_oids (struct farm_config *fc, char **names, char **values, int n_v
 		{
 			case ASN_GAUGE:
 				if (DEBUG) printf ("ASN_GAUGE\n");
-				printf ("%s:%d ", names[i], vars->val.integer[0]);
+				printf ("%s:%lld ", names[i], vars->val.integer[0]);
 				break;
 			case ASN_COUNTER:
 				if (DEBUG) printf ("COUNTER32\n");
-				printf ("%s:%d ", names[i], vars->val.counter64[0].high);
+				printf ("%s:%lld ", names[i], vars->val.counter64[0].high);
 				break;
 			case ASN_OCTET_STR:
 				if (DEBUG) printf ("STRING\n");
 				printf ("%s:%s ", names[i], vars->val.string);
 				break;
+/*
 			case ASN_NULL:
 				fprintf (stderr, "OID not found, name %s, oid ", names[i]);
-				printf ("%d", vars->name[0]);
+				fprintf (stderr, "%d", vars->name[0]);
 				for (i = 1; i < vars->name_length; i++)
-					printf (".%d", vars->name[i]);
-				printf ("\n");
+					fprintf (stderr, ".%d", vars->name[i]);
+				fprintf (stderr, "\n");
+*/
 			default:
-				fprintf (stderr, "OOPPS: %d\n", vars->type);
+				fprintf (stderr, "OOPS, name: %s, value: %s\n", names[i], values[i]);
 		}
 	}
 }
