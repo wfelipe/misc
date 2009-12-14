@@ -1,0 +1,7 @@
+digraph G {
+	nextprev -> new;
+	newnext -> next;
+	newprev -> prev;
+	prevnext -> new;
+}
+
