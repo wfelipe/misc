@@ -6,7 +6,6 @@ class Switch:
 
     def connect (self):
         self.connection.connect ()
-import Switch
 
 class CatOS (Switch):
     sw_type = 'CatOS'
