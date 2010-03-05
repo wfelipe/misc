@@ -27,7 +27,7 @@ int main (int argc, char **argv)
 		printf ("read_events\n");
 	}
 
-	if (inotify_rm_watch (wd))
+	if (inotify_rm_watch (fd, wd))
 		perror ("inotify_rm_watch");
 
 
