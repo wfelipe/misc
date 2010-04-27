@@ -10,7 +10,7 @@ ACCESSLOG=/export/logs/accesslog_80
 OLDDIR=/export/logs_gz
 GZIP=y
 DATEFORMAT="%Y%m%d%H%M"
-RENAMEFILE="`hostname`.accesslog"
+RENAMEFILE="`hostname`.accesslog."
 KEEP_DAYS=1
 LOCKFILE=/var/lock/subsys/varnishncsa_rotate
 VARNISHNCSA_PID=/var/run/varnishncsa.pid
@@ -44,6 +44,7 @@ main () {
 
 	# checks if the file was already rotated
 	logname="${RENAMEFILE}`date +${DATEFORMAT}`"
+	currdir="`dirname ${ACCESSLOG}`"
 	if [[ -f "${OLDDIR}/$logname" || -f "${OLDDIR}/$logname.gz" ]]
 	then
 		echo "Rotated file already exists: ${OLDDIR}/$logname*" >&2
@@ -52,7 +53,7 @@ main () {
 	fi
 
 	# moves the file and send a signal to varnishncsa
-	mv ${ACCESSLOG} ${OLDDIR}/$logname
+	mv ${ACCESSLOG} $currdir/$logname
 	/bin/kill -HUP `cat ${VARNISHNCSA_PID} 2>/dev/null` 2> /dev/null || true
 
 	# awaits until varnishncsa creates the logfile and 
@@ -70,9 +71,13 @@ main () {
 		exit 3
 	fi
 
+	# move the rotated file to the OLDDIR
 	if [ "$GZIP" == "y" ]
 	then
-		nice -20 gzip ${OLDDIR}/$logname
+		nice -20 gzip $currdir/$logname
+		mv $currdir/$logname.gz ${OLDDIR}/$logname.gz
+	else
+		mv $currdir/$logname ${OLDDIR}/$logname
 	fi
 	purge_logs
 
