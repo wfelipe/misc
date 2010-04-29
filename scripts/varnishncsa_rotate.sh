@@ -6,8 +6,8 @@
 #
 
 #### config
-ACCESSLOG=/export/logs/accesslog_80
-OLDDIR=/export/logs_gz
+ACCESSLOG=/var/logs/varnish.log
+OLDDIR=/var/logs-remote/varnish
 GZIP=y
 DATEFORMAT="%Y%m%d%H%M"
 RENAMEFILE="`hostname`.accesslog."
@@ -41,6 +41,9 @@ main () {
 		unlock
 		exit 0
 	fi
+
+	# create olddir directory
+	[ -d "${OLDDIR}" ] || mkdir ${OLDDIR}
 
 	# checks if the file was already rotated
 	logname="${RENAMEFILE}`date +${DATEFORMAT}`"
@@ -102,7 +105,7 @@ unlock () {
 purge_logs () {
 	date_i="`date +${DATEFORMAT} -d '1 days ago'`"
 
-	files="`ls ${OLDDIR}/${RENAMEFILE}*`"
+	files="`ls ${OLDDIR}/${RENAMEFILE}* 2> /dev/null`"
 	for file in $files
 	do
 		file=`basename $file`
