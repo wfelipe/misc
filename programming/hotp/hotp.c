@@ -55,10 +55,6 @@ int main(int argc, char **argv)
 	unsigned char challenge[8];
 	int i;
 
-	c2c(21224983, challenge);
-	hotp(challenge, "SvkZYa8LJfILarP436w{", response);
-	fprintf(stdout, "challenge: %s, response: %s\n", challenge, response);
-
 	while((opt = getopt(argc, argv, "u:s:d")) != -1) {
 		switch(opt) {
 			case 'u': username = optarg; break;
