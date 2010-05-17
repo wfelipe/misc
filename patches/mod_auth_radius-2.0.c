@@ -291,11 +291,19 @@
 #include <openssl/md5.h>
 #include <sys/stat.h>
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include <sys/types.h>
+#include <unistd.h>
+
 #include "httpd.h"
 #include "http_config.h"
 #include "http_core.h"
 #include "http_log.h"
 #include "http_protocol.h"
+#include "http_request.h"
 #include "util_md5.h"
 #include "apr_general.h"
 #include "apr_tables.h"
