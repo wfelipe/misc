@@ -103,7 +103,7 @@ unlock () {
 }
 
 purge_logs () {
-	date_i="`date +${DATEFORMAT} -d '1 days ago'`"
+	date_i="`date +${DATEFORMAT} -d \"${KEEP_DAYS} days ago\"`"
 
 	files="`ls ${OLDDIR}/${RENAMEFILE}* 2> /dev/null`"
 	for file in $files
