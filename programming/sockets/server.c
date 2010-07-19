@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string.h>
+#include <signal.h>
 
 void error(char *msg)
 {
@@ -19,11 +20,14 @@ int main(int argc, char *argv[])
 	char buffer[256];
 	struct sockaddr_in serv_addr, cli_addr;
 	int n;
+	int pid;
 
 	if (argc < 2) {
 		fprintf(stderr, "ERROR, no port provided\n");
 		exit(1);
 	}
+
+	signal(SIGCHLD, SIG_IGN);
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	memset(&serv_addr, 0, sizeof(serv_addr));
@@ -45,12 +49,21 @@ int main(int argc, char *argv[])
 		if (newsockfd < 0)
 			error("newsockfd");
 
-		memset(buffer, 0, 256);
-		n = read(newsockfd, buffer, 255);
-		if (n < 0)
-			error("read");
+		pid = fork();
+		if (pid == 0) {
+			close(sockfd);
 
-		printf("Message %s\n", buffer);
+			memset(buffer, 0, 256);
+			n = read(newsockfd, buffer, 255);
+			if (n < 0)
+				error("read");
+			close(newsockfd);
+
+			printf("Message %s\n", buffer);
+			exit(0);
+		}
+		else
+			close(newsockfd);
 	}
 
 	return 0;
