@@ -46,5 +46,7 @@ int main(int argc, char *argv[])
 	if (n < 0)
 		error("write");
 
+	close(sockfd);
+
 	return 0;
 }
