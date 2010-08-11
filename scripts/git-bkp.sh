@@ -44,6 +44,9 @@ do_dir()
 	if [ -f "$origin/HEAD" ]
 	then
 		do_backup_git $origin $dest
+	# in case the repository is not bare
+	elif [ -d "$origin/.git" ]
+		do_backup_git $origin $dest
 	else
 		for i in $origin/*
 		do
