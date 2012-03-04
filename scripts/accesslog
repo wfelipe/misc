@@ -1,0 +1,100 @@
+#!/usr/bin/env python
+#
+#
+# wfelipe <wfelipe@gmail.com>
+#
+# usage:
+#  accesslog <filename in date_format> <step interval in seconds> <output.json>
+#
+
+from datetime import datetime
+import time, signal
+import sys, os
+import re
+
+try: import simplejson as json
+except ImportError: import json
+
+# TODO - usage
+filename = sys.argv[1]
+interval = int(sys.argv[2])
+output = sys.argv[3]
+
+# end config
+
+#reqs = dict()
+
+def reset_reqs():
+    reqs = dict()
+    reqs['methods'] = dict()
+    reqs['rcodes'] = dict()
+    reqs['bsent'] = 0
+    reqs['tspent'] = 0
+    reqs['nreqs'] = 0
+
+    return reqs
+
+def format_filename(filename):
+    return datetime.now().strftime(filename)
+
+def open_file(filename, seek_end=True):
+    rfile = format_filename(filename)
+    log = open(rfile, 'r')
+    if seek_end:
+        st_results = os.stat(rfile)
+        st_size = st_results[6]
+        log.seek(st_size)
+
+    return log, rfile
+
+def print_rpc(signum, frame):
+    global reqs, interval
+
+    fd = open(output, 'w')
+    json.dump(reqs, fd)
+
+    print reqs
+    reqs = reset_reqs()
+    signal.alarm(interval)
+
+reqs = reset_reqs()
+req_re = re.compile('"(?P<method>[^ ]+) (http:/)?(?P<url>/[^ \?]+)(\?(?P<qstring>[^ ]*))? HTTP/\d.\d" (?P<rcode>\d+) (?P<bsent>\d+) "[^"]*" "[^"]*"( (?P<tspent>\d+))?$')
+
+time.sleep(interval - time.time() % interval)
+signal.signal(signal.SIGALRM, print_rpc)
+signal.alarm(interval)
+
+log, rfile = open_file(filename)
+
+while 1:
+    where = log.tell()
+    line = log.readline()
+    if not line:
+        st_results = os.stat(rfile)
+        rfile_new = format_filename(filename)
+        if st_results[6] < where or ( rfile_new != rfile and
+                                      os.access(rfile_new, os.F_OK)):
+            log.close()
+            log, rfile = open_file(filename, False)
+        else:
+            time.sleep(0.5)
+            log.seek(where)
+    else:
+        g = req_re.search(line)
+        if g:
+            method = g.group('method')
+            url = g.group('url')
+            qstring = g.group('qstring')
+            rcode = g.group('rcode')
+            bsent = int(g.group('bsent'))
+            tspent = g.group('tspent')
+
+            if reqs['methods'].has_key(method): reqs['methods'][method] += 1
+            else: reqs['methods'][method] = 1
+
+            if reqs['rcodes'].has_key(rcode): reqs['rcodes'][rcode] += 1
+            else: reqs['rcodes'][rcode] = 1
+
+            reqs['bsent'] += bsent
+            if tspent: reqs['tspent'] += int(tspent)
+            reqs['nreqs'] += 1
